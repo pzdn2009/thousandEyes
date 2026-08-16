@@ -1280,7 +1280,9 @@ function connectTerminalSocket(): void {
       const message = JSON.parse(event.data) as { type: string; data: unknown };
       if (message.type === 'snapshot') {
         terminals.clear();
-        for (const meta of message.data as TerminalMeta[]) terminals.set(meta.id, meta);
+        for (const meta of message.data as TerminalMeta[]) {
+          if (meta.running) terminals.set(meta.id, meta);
+        }
         if (state.view === 'terminals') renderTerminals();
       } else if (message.type === 'data' || message.type === 'backlog') {
         const data = message.data as { id: string; data: string };
@@ -1291,11 +1293,11 @@ function connectTerminalSocket(): void {
           terminals.delete(data.id);
           if (state.view === 'terminals') renderTerminals();
         } else if (data.action === 'exit' && data.id) {
-          const previous = terminals.get(data.id);
-          if (previous) terminals.set(data.id, { ...previous, running: false });
+          terminals.delete(data.id);
           if (state.view === 'terminals') renderTerminals();
         } else if (data.meta) {
-          terminals.set(data.meta.id, data.meta);
+          if (data.meta.running) terminals.set(data.meta.id, data.meta);
+          else terminals.delete(data.meta.id);
           // resize / shell marker 也会触发 meta。这里如果重建 xterm，会让 fit → resize →
           // meta → 重建形成闪烁循环，并把输入焦点抢走。已有卡片只保留内存中的最新状态；
           // 新建、退出和移除才真正改变网格结构。
@@ -1406,7 +1408,9 @@ function mountTerminal(meta: TerminalMeta): HTMLElement {
 function renderTerminals(): void {
   disposeTerminalViews();
   const main = document.getElementById('main')!;
-  const natural = [...terminals.values()].sort((a, b) => Number(b.running) - Number(a.running) || b.createdAt - a.createdAt);
+  const natural = [...terminals.values()]
+    .filter((meta) => meta.running)
+    .sort((a, b) => b.createdAt - a.createdAt);
   const known = new Set(natural.map((item) => item.id));
   terminalLayout.order = [...terminalLayout.order.filter((id) => known.has(id)), ...natural.map((item) => item.id).filter((id) => !terminalLayout.order.includes(id))];
   const rows = terminalLayout.order.map((id) => terminals.get(id)).filter((item): item is TerminalMeta => Boolean(item));
