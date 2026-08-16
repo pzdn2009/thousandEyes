@@ -1,0 +1,39 @@
+{
+  "name": "thousandeyes",
+  "version": "0.1.0",
+  "description": "终端与 AI Agent 会话控制塔",
+  "main": "index.js",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit",
+    "scan": "tsx src/daemon/index.ts scan",
+    "stats": "tsx src/daemon/index.ts stats",
+    "dev": "node scripts/build.mjs && tsx src/daemon/index.ts serve",
+    "start": "node dist/daemon/index.js serve",
+    "hooks:install": "tsx src/daemon/index.ts hooks install",
+    "hooks:uninstall": "tsx src/daemon/index.ts hooks uninstall",
+    "hooks:status": "tsx src/daemon/index.ts hooks status",
+    "postinstall": "node scripts/postinstall.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "private": "true",
+  "dependencies": {
+    "@xterm/addon-fit": "^0.10.0",
+    "@xterm/xterm": "^5.5.0",
+    "better-sqlite3": "^11.10.0",
+    "chokidar": "^4.0.3",
+    "node-pty": "^1.1.0",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^22.20.1",
+    "@types/ws": "^8.18.1",
+    "esbuild": "^0.24.2",
+    "tsx": "^4.23.12",
+    "typescript": "^5.9.3"
+  }
+}

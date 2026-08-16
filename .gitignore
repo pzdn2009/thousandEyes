@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Runtime data and logs
+*.log
+logs/
+data/
+*.sqlite
+*.sqlite3
+*.db
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Coverage and caches
+coverage/
+.cache/
+*.tsbuildinfo
+
+# Editor and operating-system files
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db

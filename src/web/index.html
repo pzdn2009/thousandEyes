@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>thousandEyes</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/app.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Ctext y='13' font-size='13'%3E%F0%9F%91%81%3C/text%3E%3C/svg%3E"
+    />
+  </head>
+  <body>
+    <header>
+      <div class="brand"><span class="eye">◉</span> thousandEyes</div>
+      <nav id="nav">
+        <button data-view="live" aria-selected="false">状态墙 <span id="livedot"></span></button>
+        <button data-view="terminals" aria-selected="false">终端</button>
+        <button data-view="timeline" aria-selected="true">时间轴</button>
+        <button data-view="projects" aria-selected="false">项目</button>
+        <button data-view="costs" aria-selected="false">成本</button>
+        <button data-view="sessions" aria-selected="false">会话</button>
+        <button data-view="files" aria-selected="false">文件</button>
+      </nav>
+      <div class="grow"></div>
+      <div class="summary" id="summary"></div>
+      <button class="btn" id="rescan" title="重新扫描 transcript 目录">重扫</button>
+    </header>
+
+    <div class="filters" id="filters"></div>
+    <main id="main"><div class="loading">加载中…</div></main>
+
+    <div id="palette" class="palette" hidden>
+      <div class="palette-box">
+        <input id="palette-input" type="text" placeholder="搜索命令、会话、项目…  （Enter 跳到时间轴）" />
+        <div id="palette-list" class="palette-list"></div>
+        <div class="palette-hint">↑↓ 选择 · Enter 打开 · Esc 关闭</div>
+      </div>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
