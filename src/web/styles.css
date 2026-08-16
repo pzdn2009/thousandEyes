@@ -72,6 +72,20 @@ header {
 }
 .brand .eye { color: var(--accent); font-size: 15px; }
 
+.history-controls { display: flex; gap: 2px; }
+.history-button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-elev);
+  color: var(--fg);
+  cursor: pointer;
+  font: 17px/1 var(--sans);
+}
+.history-button:hover { background: var(--bg-hover); }
+.history-button:disabled { color: var(--fg-faint); cursor: default; opacity: .55; }
+
 nav { display: flex; gap: 2px; }
 nav button {
   background: none;

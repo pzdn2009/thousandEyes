@@ -195,6 +195,101 @@ const state = {
   sort: { key: 'last_ts', dir: -1 as 1 | -1 },
 };
 
+interface RouteSnapshot {
+  view: View;
+  q: string;
+  actors: string[];
+  kinds: string[];
+  project: string;
+  sessionId: string;
+  filePath: string;
+  failedOnly: boolean;
+  includeSidechain: boolean;
+  costGroupBy: 'day' | 'project' | 'model' | 'session';
+  sinceDays: number;
+  sort: { key: string; dir: 1 | -1 };
+  scrollY: number;
+}
+
+interface RouteState {
+  thousandEyes: true;
+  position: number;
+  route: RouteSnapshot;
+}
+
+let historyPosition = 0;
+let highestHistoryPosition = 0;
+
+function snapshotRoute(): RouteSnapshot {
+  return {
+    view: state.view,
+    q: state.q,
+    actors: [...state.actors],
+    kinds: [...state.kinds],
+    project: state.project,
+    sessionId: state.sessionId,
+    filePath: state.filePath,
+    failedOnly: state.failedOnly,
+    includeSidechain: state.includeSidechain,
+    costGroupBy: state.costGroupBy,
+    sinceDays: state.sinceDays,
+    sort: { ...state.sort },
+    scrollY: window.scrollY,
+  };
+}
+
+function isRouteState(value: unknown): value is RouteState {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<RouteState>;
+  return candidate.thousandEyes === true && typeof candidate.position === 'number' && Boolean(candidate.route);
+}
+
+function routeUrl(view = state.view): string {
+  return `${location.pathname}${location.search}#${view}`;
+}
+
+function updateHistoryControls(): void {
+  const back = document.getElementById('history-back') as HTMLButtonElement | null;
+  const forward = document.getElementById('history-forward') as HTMLButtonElement | null;
+  if (!back || !forward) return;
+  back.disabled = historyPosition <= 0;
+  forward.disabled = historyPosition >= highestHistoryPosition;
+}
+
+function persistHighestHistoryPosition(): void {
+  sessionStorage.setItem(`thousandEyes.historyMax:${location.pathname}`, String(highestHistoryPosition));
+}
+
+function replaceRoute(): void {
+  const entry: RouteState = { thousandEyes: true, position: historyPosition, route: snapshotRoute() };
+  history.replaceState(entry, '', routeUrl());
+  updateHistoryControls();
+}
+
+function pushRoute(): void {
+  historyPosition++;
+  highestHistoryPosition = historyPosition;
+  persistHighestHistoryPosition();
+  const entry: RouteState = { thousandEyes: true, position: historyPosition, route: snapshotRoute() };
+  history.pushState(entry, '', routeUrl());
+  updateHistoryControls();
+}
+
+function applyRoute(route: RouteSnapshot): void {
+  state.view = route.view;
+  state.q = route.q;
+  state.actors = new Set(route.actors);
+  state.kinds = new Set(route.kinds);
+  state.project = route.project;
+  state.sessionId = route.sessionId;
+  state.filePath = route.filePath;
+  state.failedOnly = route.failedOnly;
+  state.includeSidechain = route.includeSidechain;
+  state.costGroupBy = route.costGroupBy;
+  state.sinceDays = route.sinceDays;
+  state.sort = { ...route.sort };
+}
+
 let facets: Facets = { actors: [], projects: [], kinds: [], models: [] };
 let stats: Stats | null = null;
 interface FavoriteCommand { command: string; cwd?: string; label?: string; tags?: string[] }
@@ -296,7 +391,9 @@ function chip(
 ): HTMLButtonElement {
   const b = el('button', { class: `chip ${cls}`.trim(), 'aria-pressed': String(pressed) }, label);
   b.onclick = () => {
+    replaceRoute();
     onClick();
+    pushRoute();
     renderFilters();
     reload();
   };
@@ -383,6 +480,7 @@ function renderFilters(): void {
       window.clearTimeout(timer);
       timer = window.setTimeout(() => {
         state.q = search.value.trim();
+        replaceRoute();
         reload();
       }, 260);
     };
@@ -417,7 +515,9 @@ function renderFilters(): void {
   if (state.sessionId) {
     const clear = el('button', { class: 'chip', 'aria-pressed': 'true' }, `会话筛选 ✕`);
     clear.onclick = () => {
+      replaceRoute();
       state.sessionId = '';
+      pushRoute();
       renderFilters();
       reload();
     };
@@ -426,7 +526,9 @@ function renderFilters(): void {
   if (state.filePath) {
     const clear = el('button', { class: 'chip', 'aria-pressed': 'true' }, `文件筛选 ✕`);
     clear.onclick = () => {
+      replaceRoute();
       state.filePath = '';
+      pushRoute();
       renderFilters();
       reload();
     };
@@ -445,7 +547,9 @@ function projectSelect(): HTMLSelectElement {
   }
   sel.value = state.project;
   sel.onchange = () => {
+    replaceRoute();
     state.project = sel.value;
+    pushRoute();
     reload();
   };
   return sel;
@@ -464,7 +568,9 @@ function rangeSelect(): HTMLSelectElement {
   }
   sel.value = String(state.sinceDays);
   sel.onchange = () => {
+    replaceRoute();
     state.sinceDays = Number(sel.value);
+    pushRoute();
     reload();
   };
   return sel;
@@ -515,9 +621,9 @@ function eventRow(r: TimelineRow): HTMLElement {
   meta.append(el('span', { class: `actor ${r.actor}` }, r.actor));
   const proj = el('span', { class: 'proj', title: r.cwd ?? r.project_path }, shortPath(r.project_path));
   proj.onclick = () => {
+    replaceRoute();
     state.project = r.project_path;
-    renderFilters();
-    reload();
+    switchView('timeline');
   };
   proj.style.cursor = 'pointer';
   meta.append(proj);
@@ -533,6 +639,7 @@ function eventRow(r: TimelineRow): HTMLElement {
     const trace = el('button', { class: 'event-action', title: '查看这个文件的所有改动' }, '溯源');
     trace.onclick = (event) => {
       event.stopPropagation();
+      replaceRoute();
       state.filePath = r.file_path ?? '';
       state.q = '';
       switchView('timeline');
@@ -761,7 +868,9 @@ async function renderProjects(): Promise<void> {
   const table = el('table');
   table.append(
     sortableHeader(cols, (key) => {
+      replaceRoute();
       state.sort = { key, dir: state.sort.key === key && state.sort.dir === -1 ? 1 : -1 };
+      pushRoute();
       void renderProjects();
     }),
   );
@@ -771,6 +880,7 @@ async function renderProjects(): Promise<void> {
     const tr = el('tr');
     const link = el('a', { title: r.project_path }, shortPath(r.project_path));
     link.onclick = () => {
+      replaceRoute();
       state.project = r.project_path;
       switchView('timeline');
     };
@@ -855,7 +965,9 @@ async function renderCosts(): Promise<void> {
   table.append(
     sortableHeader(cols, (key) => {
       if (key === '_bar') return;
+      replaceRoute();
       state.sort = { key, dir: state.sort.key === key && state.sort.dir === -1 ? 1 : -1 };
+      pushRoute();
       void renderCosts();
     }),
   );
@@ -930,7 +1042,9 @@ async function renderSessions(): Promise<void> {
   const table = el('table');
   table.append(
     sortableHeader(cols, (key) => {
+      replaceRoute();
       state.sort = { key, dir: state.sort.key === key && state.sort.dir === -1 ? 1 : -1 };
+      pushRoute();
       void renderSessions();
     }),
   );
@@ -975,12 +1089,12 @@ async function openSessionDetail(id: string): Promise<void> {
       el('span', { class: 'tag' }, `↓${compact(data.session.tokens_out)}`),
     );
     const timelineButton = el('button', { class: 'btn' }, '在时间轴打开');
-    timelineButton.onclick = () => { overlay.remove(); state.sessionId = id; switchView('timeline'); };
+    timelineButton.onclick = () => { overlay.remove(); replaceRoute(); state.sessionId = id; switchView('timeline'); };
     const head = el('div', { class: 'drawer-head' }, summary, el('div', { class: 'grow' }), timelineButton, close);
     const fileList = el('div', { class: 'detail-files' }, el('h3', {}, `改动文件 · ${data.files.length}`));
     for (const file of data.files) {
       const row = el('button', { class: 'file-link', title: file.file_path }, `${shortPath(file.file_path)} · ${file.events} 次`);
-      row.onclick = () => { overlay.remove(); state.filePath = file.file_path; state.sessionId = ''; switchView('timeline'); };
+      row.onclick = () => { overlay.remove(); replaceRoute(); state.filePath = file.file_path; state.sessionId = ''; switchView('timeline'); };
       fileList.append(row);
     }
     const tree = el('div', { class: 'detail-files' }, el('h3', {}, '调用树（主会话 / 子调用）'));
@@ -1009,13 +1123,13 @@ async function renderFiles(): Promise<void> {
   const table = el('table');
   table.append(sortableHeader([
     { key: 'file_path', label: '文件' }, { key: 'actors', label: '操作者' }, { key: 'events', label: '改动', num: true }, { key: 'last_ts', label: '最近改动', num: true }, { key: '_actions', label: '' },
-  ], (key) => { state.sort = { key, dir: state.sort.key === key && state.sort.dir === -1 ? 1 : -1 }; void renderFiles(); }));
+  ], (key) => { replaceRoute(); state.sort = { key, dir: state.sort.key === key && state.sort.dir === -1 ? 1 : -1 }; pushRoute(); void renderFiles(); }));
   const body = el('tbody');
   const rows = sortRows(data.rows as unknown as Record<string, unknown>[], state.sort.key, state.sort.dir) as unknown as FileRow[];
   for (const file of rows) {
     const tr = el('tr');
     const link = el('a', { title: file.file_path }, file.file_path);
-    link.onclick = () => { state.filePath = file.file_path; state.q = ''; switchView('timeline'); };
+    link.onclick = () => { replaceRoute(); state.filePath = file.file_path; state.q = ''; switchView('timeline'); };
     tr.append(el('td', { class: 'path' }, link));
     const actors = el('td'); for (const actor of file.actors.split(',').filter(Boolean)) actors.append(el('span', { class: `actor ${actor}` }, `${actor} `));
     const action = el('td');
@@ -1086,6 +1200,7 @@ function agentCard(a: AgentStatus): HTMLElement {
   const p = el('span', { class: 'path', title: a.project }, shortPath(a.project) || '(未知项目)');
   p.style.cursor = 'pointer';
   p.onclick = () => {
+    replaceRoute();
     state.project = a.project;
     switchView('timeline');
   };
@@ -1096,6 +1211,7 @@ function agentCard(a: AgentStatus): HTMLElement {
 
   const open = el('a', {}, '查看');
   open.onclick = () => {
+    replaceRoute();
     state.sessionId = `${a.actor}:${a.sessionId}`;
     switchView('timeline');
   };
@@ -1569,6 +1685,7 @@ async function refreshPalette(q: string): Promise<void> {
       main: `在时间轴中搜索 "${q}"`,
       side: '全文检索',
       run: () => {
+        replaceRoute();
         state.q = q;
         switchView('timeline');
       },
@@ -1584,9 +1701,9 @@ async function refreshPalette(q: string): Promise<void> {
             if (r.kind === 'command' && r.command) {
               if (window.confirm(`在新托管终端中运行这条历史命令？\n\n${r.command}`)) void createTerminal(r.command, r.cwd ?? r.project_path);
             } else if (r.file_path) {
-              state.filePath = r.file_path; state.sessionId = ''; switchView('timeline');
+              replaceRoute(); state.filePath = r.file_path; state.sessionId = ''; switchView('timeline');
             } else {
-              state.sessionId = r.session_id; switchView('timeline');
+              replaceRoute(); state.sessionId = r.session_id; switchView('timeline');
             }
           },
         });
@@ -1666,21 +1783,25 @@ function renderSummary(): void {
   }
 }
 
-function switchView(v: View, fromHash = false): void {
+function switchView(v: View, fromHistory = false, restoreScrollY?: number): void {
+  if (!fromHistory) replaceRoute();
   if (state.view === 'terminals' && v !== 'terminals') disposeTerminalViews();
   state.view = v;
-  if (!fromHash && location.hash !== `#${v}`) history.replaceState(null, '', `#${v}`);
   for (const b of document.querySelectorAll<HTMLButtonElement>('#nav button')) {
     b.setAttribute('aria-selected', String(b.dataset.view === v));
   }
-  state.sort =
-    v === 'projects'
-      ? { key: 'last_ts', dir: -1 }
-      : v === 'sessions'
-        ? { key: 'started_at', dir: -1 }
-        : state.sort;
+  if (!fromHistory) {
+    state.sort =
+      v === 'projects'
+        ? { key: 'last_ts', dir: -1 }
+        : v === 'sessions'
+          ? { key: 'started_at', dir: -1 }
+          : state.sort;
+    pushRoute();
+  }
   renderFilters();
   reload();
+  if (restoreScrollY !== undefined) requestAnimationFrame(() => window.scrollTo({ top: restoreScrollY }));
 }
 
 function reload(): void {
@@ -1722,6 +1843,10 @@ function bindShell(): void {
     b.onclick = () => switchView(b.dataset.view as View);
   }
   const rescan = document.getElementById('rescan') as HTMLButtonElement;
+  const back = document.getElementById('history-back') as HTMLButtonElement;
+  const forward = document.getElementById('history-forward') as HTMLButtonElement;
+  back.onclick = () => history.back();
+  forward.onclick = () => history.forward();
   rescan.onclick = async () => {
     rescan.disabled = true;
     rescan.textContent = '扫描中…';
@@ -1749,6 +1874,16 @@ function bindShell(): void {
   bindPalette();
 
   window.addEventListener('keydown', (e) => {
+    if (e.altKey && e.key === 'ArrowLeft') {
+      e.preventDefault();
+      history.back();
+      return;
+    }
+    if (e.altKey && e.key === 'ArrowRight') {
+      e.preventDefault();
+      history.forward();
+      return;
+    }
     // ⌘K / Ctrl-K 唤出命令面板
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
@@ -1804,15 +1939,43 @@ async function main(): Promise<void> {
 
   const fromHash = location.hash.slice(1) as View;
   const known: View[] = ['live', 'terminals', 'timeline', 'projects', 'costs', 'sessions', 'files'];
-  if (known.includes(fromHash)) switchView(fromHash, true);
+  const existingRoute = isRouteState(history.state) ? history.state : undefined;
+  if (existingRoute) {
+    historyPosition = existingRoute.position;
+    highestHistoryPosition = Math.max(
+      historyPosition,
+      Number(sessionStorage.getItem(`thousandEyes.historyMax:${location.pathname}`) ?? 0),
+    );
+    applyRoute(existingRoute.route);
+    switchView(existingRoute.route.view, true, existingRoute.route.scrollY);
+  } else if (known.includes(fromHash)) {
+    state.view = fromHash;
+    replaceRoute();
+    switchView(fromHash, true);
+  }
   else {
+    replaceRoute();
     renderFilters();
     reload();
   }
 
+  window.addEventListener('popstate', (event) => {
+    if (!isRouteState(event.state)) return;
+    const route = event.state.route;
+    if (state.view === 'terminals' && route.view !== 'terminals') disposeTerminalViews();
+    historyPosition = event.state.position;
+    highestHistoryPosition = Math.max(highestHistoryPosition, historyPosition);
+    applyRoute(route);
+    updateHistoryControls();
+    switchView(route.view, true, route.scrollY);
+  });
+
   window.addEventListener('hashchange', () => {
     const v = location.hash.slice(1) as View;
-    if (known.includes(v) && v !== state.view) switchView(v, true);
+    if (known.includes(v) && v !== state.view) {
+      switchView(v, true);
+      replaceRoute();
+    }
   });
 
   setInterval(refreshStats, 15000);
