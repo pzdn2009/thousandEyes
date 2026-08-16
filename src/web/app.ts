@@ -1131,7 +1131,7 @@ function renderLive(): void {
 
   if (!notifyEnabled && 'Notification' in window && Notification.permission === 'default') {
     const b = el('div', { class: 'banner' });
-    b.append(el('span', {}, 'agent 等待你输入时发系统通知？'));
+    b.append(el('span', {}, 'agent 等待你输入或本轮结束时发浏览器通知？'));
     const btn = el('button', { class: 'btn' }, '开启通知');
     btn.onclick = async () => {
       notifyEnabled = (await Notification.requestPermission()) === 'granted';
@@ -1172,10 +1172,14 @@ function updateLiveDot(): void {
   dot.title = waiting ? '有 agent 在等你' : running ? '有 agent 在运行' : '';
 }
 
-function notifyWaiting(a: AgentStatus): void {
-  if (!notifyEnabled || document.visibilityState === 'visible') return;
+function notifyTransition(a: AgentStatus, prev?: AgentState): void {
+  if (!notifyEnabled) return;
+  const waiting = a.state === 'waiting' && prev !== 'waiting';
+  // hook 的 Stop 是确定的“本轮结束”；watch 的 idle 只是无写入推断，不能冒充完成。
+  const completed = a.state === 'idle' && prev === 'running' && a.source === 'hook' && a.detail === '本轮结束';
+  if (!waiting && !completed) return;
   try {
-    new Notification(`${a.actor} 在等你`, {
+    new Notification(waiting ? `${a.actor} 在等你` : `${a.actor} 已完成本轮`, {
       body: `${a.detail ?? ''}\n${shortPath(a.project)}`.trim(),
       tag: a.key,
     });
@@ -1209,7 +1213,7 @@ function connectLive(): void {
   });
   live.addEventListener('change', (e) => {
     const d = JSON.parse((e as MessageEvent).data) as { status: AgentStatus; prev?: AgentState };
-    if (d.status.state === 'waiting' && d.prev !== 'waiting') notifyWaiting(d.status);
+    notifyTransition(d.status, d.prev);
     apply(d.status);
   });
   live.addEventListener('tick', (e) => {
