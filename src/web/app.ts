@@ -761,13 +761,21 @@ async function openReplay(castRef: string, offsetMs = 0): Promise<void> {
         return Array.isArray(value) && typeof value[0] === 'number' ? [value] : [];
       } catch { return []; }
     });
+    if (!events.length) {
+      toast('这段录像尚未写入终端输出');
+      return;
+    }
     const start = Math.max(0, offsetMs / 1000 - 2);
     const overlay = el('div', { class: 'replay-overlay' });
     const box = el('section', { class: 'replay-box' });
     const head = el('div', { class: 'replay-head' }, el('strong', {}, `回放 · ${header.title ?? file}`), el('span', { class: 'proj' }, `从 ${start.toFixed(1)}s 开始`));
     const download = el('a', { class: 'btn', href: `/api/casts/${encodeURIComponent(file)}`, download: file }, '下载 .cast');
     const close = el('button', { class: 'btn' }, '关闭');
-    close.onclick = () => { term.dispose(); overlay.remove(); };
+    close.onclick = () => {
+      if (timer) window.clearTimeout(timer);
+      term.dispose();
+      overlay.remove();
+    };
     head.append(el('div', { class: 'grow' }), download, close);
     const host = el('div', { class: 'replay-terminal' });
     const controls = el('div', { class: 'replay-controls' });
@@ -782,26 +790,73 @@ async function openReplay(castRef: string, offsetMs = 0): Promise<void> {
     term.open(host);
     let cursor = Number(scrub.value);
     let timer: number | undefined;
+    let playing = false;
+    const writeEvent = (event: CastEvent): void => {
+      if (event[1] === 'o') {
+        term.write(event[2]);
+        return;
+      }
+      const [cols, rows] = event[2].split('x').map(Number);
+      if (cols && rows) term.resize(cols, rows);
+    };
     const drawTo = (target: number) => {
       term.reset();
+      // xterm 的 write 是异步队列。把连续输出合并，避免跳转到长录像时排入数万次 write，
+      // 否则画面会长期空白，播放也会被旧队列拖住。
+      let output = '';
+      const flush = () => {
+        if (output) term.write(output);
+        output = '';
+      };
       for (let i = 0; i <= target; i++) {
         const event = events[i];
         if (!event) continue;
-        if (event[1] === 'o') term.write(event[2]);
-        else { const [cols, rows] = event[2].split('x').map(Number); if (cols && rows) term.resize(cols, rows); }
+        if (event[1] === 'o') output += event[2];
+        else {
+          flush();
+          writeEvent(event);
+        }
       }
+      flush();
       cursor = target; scrub.value = String(target);
     };
     drawTo(cursor);
-    play.onclick = () => {
-      if (timer) { window.clearInterval(timer); timer = undefined; play.textContent = '播放'; return; }
-      play.textContent = '暂停';
-      timer = window.setInterval(() => {
-        if (cursor >= events.length - 1) { window.clearInterval(timer); timer = undefined; play.textContent = '播放'; return; }
-        const next = ++cursor; drawTo(next);
-      }, Math.max(20, 300 / Number(speed.value)));
+    const stopPlayback = () => {
+      if (timer) window.clearTimeout(timer);
+      timer = undefined;
+      playing = false;
+      play.textContent = '播放';
     };
-    scrub.oninput = () => drawTo(Number(scrub.value));
+    const scheduleNext = () => {
+      if (!playing) return;
+      if (cursor >= events.length - 1) {
+        stopPlayback();
+        return;
+      }
+      const current = events[cursor]!;
+      const next = events[cursor + 1]!;
+      const delay = Math.max(8, ((next[0] - current[0]) * 1000) / Number(speed.value));
+      timer = window.setTimeout(() => {
+        cursor++;
+        writeEvent(events[cursor]!);
+        scrub.value = String(cursor);
+        scheduleNext();
+      }, delay);
+    };
+    play.onclick = () => {
+      if (playing) {
+        stopPlayback();
+        return;
+      }
+      if (cursor >= events.length - 1) drawTo(0);
+      playing = true;
+      play.textContent = '暂停';
+      scheduleNext();
+    };
+    scrub.oninput = () => {
+      stopPlayback();
+      drawTo(Number(scrub.value));
+    };
   } catch (error) { toast(`无法读取录像：${error}`); }
 }
 

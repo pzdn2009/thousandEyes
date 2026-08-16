@@ -171,6 +171,7 @@ export class LiveTracker extends EventEmitter {
     project?: string;
     title?: string;
     detail?: string;
+    awaitingApproval?: boolean;
   }): void {
     const key = `${info.actor}:${info.sessionId}`;
     const prev = this.agents.get(key);
@@ -185,7 +186,7 @@ export class LiveTracker extends EventEmitter {
       sessionId: info.sessionId,
       project: info.project ?? prev?.project ?? '',
       title: info.title ?? prev?.title,
-      state: 'running',
+      state: info.awaitingApproval ? 'waiting' : 'running',
       detail: info.detail ?? '有新的写入',
       source: 'watch',
     });

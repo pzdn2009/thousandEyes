@@ -25,6 +25,7 @@ export interface TouchedSession {
   sessionRef: string;
   project?: string;
   detail?: string;
+  awaitingApproval?: boolean;
 }
 
 export interface IngestResult {
@@ -201,6 +202,7 @@ export class Ingestor {
     if (e.patchTarget) {
       const info = this.patch(sid, e.patchTarget, e.exitCode, e.durationMs);
       result.patched += info.changes;
+      if (info.changes && e.liveActivity !== false) this.touch(result, sid, e);
       return;
     }
 
@@ -220,14 +222,17 @@ export class Ingestor {
     const info = this.insert({ ...e, ts, dedupeKey });
     result.eventsInserted += info.changes;
 
-    if (info.changes) {
-      result.touched.set(sid, {
-        actor: e.actor,
-        sessionRef: e.sessionRef,
-        project: e.cwd,
-        detail: describe(e),
-      });
-    }
+    if (info.changes && e.liveActivity !== false) this.touch(result, sid, e);
+  }
+
+  private touch(result: IngestResult, sid: string, e: NormalizedEvent): void {
+    result.touched.set(sid, {
+      actor: e.actor,
+      sessionRef: e.sessionRef,
+      project: e.cwd,
+      detail: e.awaitingApproval ? '等待你批准命令' : describe(e),
+      awaitingApproval: e.awaitingApproval,
+    });
   }
 }
 

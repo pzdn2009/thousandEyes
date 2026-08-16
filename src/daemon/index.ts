@@ -107,6 +107,7 @@ async function cmdServe() {
           sessionId: t.sessionRef,
           project: t.project,
           detail: t.detail,
+          awaitingApproval: t.awaitingApproval,
         });
       }
     },

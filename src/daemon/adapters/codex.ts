@@ -117,6 +117,7 @@ export class CodexAdapter implements AgentAdapter {
             kind: 'command',
             toolName: name,
             command: truncate(flattenShellCommand(args?.command)),
+            awaitingApproval: requiresApproval(args),
             selfRef: callId,
           },
         ];
@@ -128,6 +129,7 @@ export class CodexAdapter implements AgentAdapter {
             kind: 'command',
             toolName: name,
             command: truncate(asString(args?.cmd)),
+            awaitingApproval: requiresApproval(args),
             selfRef: callId,
           },
         ];
@@ -204,13 +206,14 @@ export class CodexAdapter implements AgentAdapter {
         return [
           {
             ...base,
-            kind: 'response',
-            model: st.model,
-            tokensIn: freshIn,
-            tokensOut: asNumber(last.output_tokens),
-            tokensCacheRead: cached,
-          },
-        ];
+          kind: 'response',
+          model: st.model,
+          tokensIn: freshIn,
+          tokensOut: asNumber(last.output_tokens),
+          tokensCacheRead: cached,
+          liveActivity: false,
+        },
+      ];
       }
       case 'patch_apply_end': {
         const changes = isRecord(p.changes) ? p.changes : {};
@@ -256,6 +259,11 @@ function parseArgs(v: unknown): Record<string, unknown> | undefined {
   if (typeof v !== 'string') return undefined;
   const parsed = safeJson(v);
   return isRecord(parsed) ? parsed : undefined;
+}
+
+/** Codex 会在写入 function_call 后展示原生批准弹窗，直到用户回应前不会有执行结果。 */
+function requiresApproval(args: Record<string, unknown> | undefined): boolean {
+  return args?.sandbox_permissions === 'require_escalated';
 }
 
 /**

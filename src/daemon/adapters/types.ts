@@ -28,6 +28,8 @@ export interface NormalizedEvent {
 
   /** kind=command */
   command?: string;
+  /** 工具调用已经发出，正等待用户授予额外权限。 */
+  awaitingApproval?: boolean;
   exitCode?: number;
   durationMs?: number;
   /** 工具名，用于区分 Bash / Write / Edit / WebSearch 等。 */
@@ -63,6 +65,8 @@ export interface NormalizedEvent {
 
   /** 若为 true，只用于更新 session 元信息，不写入 events 表。 */
   metaOnly?: boolean;
+  /** 若为 false，事件仍入库，但不应改变实时状态墙的活动状态。 */
+  liveActivity?: boolean;
 
   /** 产生该事件的 CLI 版本，写入 sessions.source_version。 */
   sourceVersion?: string;
