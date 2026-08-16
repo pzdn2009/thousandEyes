@@ -1245,13 +1245,34 @@ function renderLive(): void {
     parts.push(banner);
   }
 
-  if (!notifyEnabled && 'Notification' in window && Notification.permission === 'default') {
+  if ('Notification' in window && Notification.permission === 'default') {
     const b = el('div', { class: 'banner' });
     b.append(el('span', {}, 'agent 等待你输入或本轮结束时发浏览器通知？'));
     const btn = el('button', { class: 'btn' }, '开启通知');
     btn.onclick = async () => {
-      notifyEnabled = (await Notification.requestPermission()) === 'granted';
+      try {
+        notifyEnabled = (await Notification.requestPermission()) === 'granted';
+        if (!notifyEnabled) toast('浏览器未授予通知权限');
+      } catch {
+        notifyEnabled = false;
+        toast('无法请求浏览器通知权限');
+      }
       renderLive();
+    };
+    b.append(btn);
+    parts.push(b);
+  }
+
+  if ('Notification' in window && Notification.permission === 'denied') {
+    parts.push(el('div', { class: 'banner' }, '浏览器通知已被禁止；请在站点权限中允许通知后重新打开此页。'));
+  }
+
+  if (notifyEnabled) {
+    const b = el('div', { class: 'banner' }, el('span', {}, '浏览器通知已开启。'));
+    const btn = el('button', { class: 'btn' }, '发送测试通知');
+    btn.onclick = () => {
+      const sent = sendBrowserNotification('thousandEyes 通知测试', '浏览器通知工作正常。', `thousandEyes-test-${Date.now()}`);
+      if (sent) toast('测试通知已触发');
     };
     b.append(btn);
     parts.push(b);
@@ -1294,13 +1315,39 @@ function notifyTransition(a: AgentStatus, prev?: AgentState): void {
   // hook 的 Stop 是确定的“本轮结束”；watch 的 idle 只是无写入推断，不能冒充完成。
   const completed = a.state === 'idle' && prev === 'running' && a.source === 'hook' && a.detail === '本轮结束';
   if (!waiting && !completed) return;
+  sendBrowserNotification(
+    waiting ? `${a.actor} 在等你` : `${a.actor} 已完成本轮`,
+    `${a.detail ?? ''}\n${shortPath(a.project)}`.trim(),
+    a.key,
+  );
+}
+
+function sendBrowserNotification(title: string, body: string, tag: string): boolean {
+  if (!('Notification' in window)) {
+    toast('当前浏览器不支持系统通知');
+    return false;
+  }
+  if (Notification.permission !== 'granted') {
+    notifyEnabled = false;
+    toast('浏览器通知权限未开启；请刷新页面后重新授权');
+    if (state.view === 'live') renderLive();
+    return false;
+  }
   try {
-    new Notification(waiting ? `${a.actor} 在等你` : `${a.actor} 已完成本轮`, {
-      body: `${a.detail ?? ''}\n${shortPath(a.project)}`.trim(),
-      tag: a.key,
-    });
+    const options: NotificationOptions & { renotify?: boolean } = {
+      body,
+      tag,
+      // 同一个 agent 再次进入等待状态时也应重新提示，不能只静默替换旧通知。
+      renotify: true,
+      // 浏览器支持时保持横幅，避免测试通知在用户看到前就自动消失。
+      requireInteraction: true,
+    };
+    const notification = new Notification(title, options);
+    notification.onerror = () => toast('浏览器未能显示通知；请检查系统的通知设置');
+    return true;
   } catch {
-    /* 通知失败无所谓 */
+    toast('浏览器未能显示通知；请检查系统的通知设置');
+    return false;
   }
 }
 
@@ -1927,15 +1974,8 @@ async function main(): Promise<void> {
   }
   connectLive();
 
-  // 页面隐藏时不必占着一条长连接；回到前台再连并补一次快照
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      live?.close();
-      live = null;
-    } else if (!live) {
-      connectLive();
-    }
-  });
+  // 通知由 SSE 状态变更触发；页面退到后台时也必须保持连接。
+  // EventSource 会自行重连，不能因页面隐藏而主动关闭它。
 
   const fromHash = location.hash.slice(1) as View;
   const known: View[] = ['live', 'terminals', 'timeline', 'projects', 'costs', 'sessions', 'files'];
