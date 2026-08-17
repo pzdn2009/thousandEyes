@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CAST_DIR, HOST, PORT } from '../config.js';
 import type { DB } from '../db/index.js';
-import { costs, deleteWorkspace, facets, files, projects, sessionById, sessionDetail, sessions, stats, timeline, upsertWorkspace, workspaces } from '../db/queries.js';
+import { addProjectRoot, costs, deleteProjectRoot, deleteWorkspace, facets, files, projectRoots, projects, sessionById, sessionDetail, sessions, stats, timeline, upsertWorkspace, workspaces } from '../db/queries.js';
 import { authenticate, ensureToken, hostAllowed } from './auth.js';
 import type { AgentState, AgentStatus, LiveTracker } from '../live/tracker.js';
 import type { PtyManager, SpawnOptions } from '../pty/manager.js';
@@ -293,6 +293,28 @@ function handleApi(
     json(res, 200, { rows: workspaces(db) }, setCookie);
     return true;
   }
+
+  if (req.method === 'GET' && p === '/api/project-roots') {
+    json(res, 200, { rows: projectRoots(db) }, setCookie);
+    return true;
+  }
+  if (req.method === 'POST' && p === '/api/project-roots') {
+    readJson(req).then((body) => {
+      const rootPath = (body as { path?: unknown }).path;
+      if (typeof rootPath !== 'string' || !rootPath.trim()) throw new Error('path is required');
+      const resolved = path.resolve(rootPath.trim());
+      if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) throw new Error('path must be an existing directory');
+      json(res, 201, addProjectRoot(db, resolved), setCookie);
+    }).catch((e) => json(res, 400, { error: String(e) }, setCookie));
+    return true;
+  }
+  const projectRootMatch = /^\/api\/project-roots\/(.+)$/.exec(p);
+  if (req.method === 'DELETE' && projectRootMatch) {
+    const rootPath = decodeURIComponent(projectRootMatch[1]!);
+    if (!deleteProjectRoot(db, rootPath)) json(res, 404, { error: 'project root not found' }, setCookie);
+    else json(res, 200, { ok: true }, setCookie);
+    return true;
+  }
   if (req.method === 'POST' && p === '/api/workspaces') {
     readJson(req).then((body) => {
       const input = body as { id?: unknown; name?: unknown; layout?: unknown; panes?: unknown };
@@ -323,6 +345,7 @@ function handleApi(
   if (req.method === 'POST' && p === '/api/terminals') {
     readJson(req).then((body) => {
       const o = body as SpawnOptions;
+      if (typeof o.cwd === 'string' && (!fs.existsSync(o.cwd) || !fs.statSync(o.cwd).isDirectory())) throw new Error('cwd must be an existing directory');
       const meta = deps.terminals.spawn({
         cwd: typeof o.cwd === 'string' ? o.cwd : undefined,
         shell: typeof o.shell === 'string' ? o.shell : undefined,

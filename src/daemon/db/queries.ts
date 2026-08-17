@@ -365,6 +365,30 @@ export function deleteWorkspace(db: DB, id: string): boolean {
   return db.prepare(`DELETE FROM workspaces WHERE id = ?`).run(id).changes > 0;
 }
 
+export interface ProjectRootRow {
+  path: string;
+  sort_order: number;
+  created_at: number;
+}
+
+export function projectRoots(db: DB): ProjectRootRow[] {
+  return db.prepare(`SELECT path, sort_order, created_at FROM project_roots ORDER BY sort_order ASC, created_at ASC`).all() as ProjectRootRow[];
+}
+
+export function addProjectRoot(db: DB, rootPath: string): ProjectRootRow {
+  const existing = db.prepare(`SELECT path, sort_order, created_at FROM project_roots WHERE path = ?`).get(rootPath) as ProjectRootRow | undefined;
+  if (existing) return existing;
+  const count = db.prepare(`SELECT COUNT(*) AS count FROM project_roots`).get() as { count: number };
+  if (count.count >= 5) throw new Error('at most 5 project roots are allowed');
+  const now = Date.now();
+  db.prepare(`INSERT INTO project_roots (path, sort_order, created_at) VALUES (?, ?, ?)`).run(rootPath, count.count, now);
+  return db.prepare(`SELECT path, sort_order, created_at FROM project_roots WHERE path = ?`).get(rootPath) as ProjectRootRow;
+}
+
+export function deleteProjectRoot(db: DB, rootPath: string): boolean {
+  return db.prepare(`DELETE FROM project_roots WHERE path = ?`).run(rootPath).changes > 0;
+}
+
 export interface Stats {
   sessions: number;
   events: number;

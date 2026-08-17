@@ -6,7 +6,7 @@
  *  - events.dedupe_key UNIQUE：让摄取幂等，文件轮转或手动重建索引时不会产生重复事件
  */
 
-export const SCHEMA_VERSION = 1;
+export const SCHEMA_VERSION = 2;
 
 export const SCHEMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -105,5 +105,12 @@ CREATE TABLE IF NOT EXISTS workspaces (
   panes      TEXT NOT NULL,
   created_at INTEGER,
   updated_at INTEGER
+);
+
+-- 用户维护的项目根目录；仅用于新终端面板分组，不做文件系统扫描。
+CREATE TABLE IF NOT EXISTS project_roots (
+  path       TEXT PRIMARY KEY,
+  sort_order INTEGER NOT NULL,
+  created_at INTEGER NOT NULL
 );
 `;

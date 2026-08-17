@@ -59,6 +59,12 @@ interface WorkspaceRow {
   updated_at: number;
 }
 
+interface ProjectRootRow {
+  path: string;
+  sort_order: number;
+  created_at: number;
+}
+
 interface TimelineRow {
   id: number;
   session_id: string;
@@ -1652,12 +1658,131 @@ function renderTerminals(): void {
 }
 
 async function createTerminal(bootCommand?: string, cwd?: string): Promise<void> {
+  if (!bootCommand && !cwd) {
+    await openTerminalLauncher();
+    return;
+  }
   const targetCwd = cwd ?? (state.project || undefined);
-  const meta = await api<TerminalMeta>('/api/terminals', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ cwd: targetCwd, bootCommand }) });
+  await spawnTerminal({ cwd: targetCwd, bootCommand });
+}
+
+async function spawnTerminal(input: { cwd?: string; bootCommand?: string; title?: string }): Promise<void> {
+  const meta = await api<TerminalMeta>('/api/terminals', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input) });
   terminals.set(meta.id, meta);
   terminalFocusId = meta.id;
   if (state.view === 'terminals') renderTerminals();
   else switchView('terminals');
+}
+
+function defaultTerminalTitle(cwd: string): string {
+  const parts = cwd.replace(/\/+$/, '').split('/').filter(Boolean);
+  return parts.at(-1) || 'shell';
+}
+
+async function openTerminalLauncher(): Promise<void> {
+  let roots: ProjectRootRow[] = [];
+  try {
+    roots = (await api<{ rows: ProjectRootRow[] }>('/api/project-roots')).rows;
+  } catch (error) {
+    toast(`读取常用目录失败：${error}`);
+  }
+
+  const overlay = el('div', { class: 'terminal-launch-overlay' });
+  const box = el('section', { class: 'terminal-launch', role: 'dialog', 'aria-modal': 'true', 'aria-label': '新终端' });
+  const project = el('select', { title: '项目目录' }) as HTMLSelectElement;
+  const pathInput = el('input', { class: 'terminal-launch-path', type: 'text', placeholder: '输入其他本机目录路径' }) as HTMLInputElement;
+  const titleInput = el('input', { class: 'terminal-launch-title', type: 'text', maxlength: '80' }) as HTMLInputElement;
+  let titleOverridden = false;
+
+  const addOption = (parent: HTMLOptGroupElement | HTMLSelectElement, value: string, label: string): void => {
+    parent.append(el('option', { value }, label));
+  };
+  const recent = el('optgroup', { label: '最近项目' }) as HTMLOptGroupElement;
+  const current = state.project && facets.projects.includes(state.project) ? state.project : '';
+  if (current) addOption(project, current, `当前项目 · ${shortPath(current)}`);
+  for (const item of facets.projects) {
+    if (item !== current) addOption(recent, item, shortPath(item));
+  }
+  if (recent.children.length) project.append(recent);
+  for (const root of roots) {
+    const group = el('optgroup', { label: `常用目录 · ${shortPath(root.path)}` }) as HTMLOptGroupElement;
+    addOption(group, root.path, `在此目录打开 · ${shortPath(root.path)}`);
+    for (const item of facets.projects) {
+      if (item.startsWith(`${root.path}/`)) addOption(group, item, shortPath(item));
+    }
+    project.append(group);
+  }
+  addOption(project, '__custom__', '其他路径…');
+  project.value = current || facets.projects[0] || '__custom__';
+
+  const selectedPath = (): string => project.value === '__custom__' ? pathInput.value.trim() : project.value;
+  const syncTitle = (): void => {
+    if (!titleOverridden) titleInput.value = defaultTerminalTitle(selectedPath());
+  };
+  const syncPathMode = (): void => {
+    pathInput.hidden = project.value !== '__custom__';
+    syncTitle();
+  };
+  project.onchange = syncPathMode;
+  pathInput.oninput = syncTitle;
+  titleInput.oninput = () => { titleOverridden = titleInput.value !== defaultTerminalTitle(selectedPath()); };
+
+  const rootInput = el('input', { class: 'terminal-launch-path', type: 'text', placeholder: '添加常用目录（最多 5 个）' }) as HTMLInputElement;
+  const rootsList = el('div', { class: 'terminal-root-list' });
+  const renderRoots = (): void => {
+    rootsList.replaceChildren(...roots.map((root) => {
+      const remove = el('button', { class: 'terminal-action danger', title: '移除常用目录' }, '移除');
+      remove.onclick = async () => {
+        try {
+          await api(`/api/project-roots/${encodeURIComponent(root.path)}`, { method: 'DELETE' });
+          overlay.remove();
+          await openTerminalLauncher();
+        } catch (error) { toast(`移除失败：${error}`); }
+      };
+      return el('div', { class: 'terminal-root-item', title: root.path }, el('span', {}, shortPath(root.path)), remove);
+    }));
+  };
+  renderRoots();
+  const addRoot = el('button', { class: 'btn' }, '添加目录');
+  addRoot.onclick = async () => {
+    const value = rootInput.value.trim();
+    if (!value) return;
+    try {
+      await api<ProjectRootRow>('/api/project-roots', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ path: value }) });
+      overlay.remove();
+      await openTerminalLauncher();
+    } catch (error) { toast(`添加失败：${error}`); }
+  };
+
+  const cancel = el('button', { class: 'btn' }, '取消');
+  cancel.onclick = () => overlay.remove();
+  const launch = el('button', { class: 'btn terminal-launch-submit' }, '创建终端');
+  launch.onclick = async () => {
+    const cwd = selectedPath();
+    if (!cwd) { toast('请选择或输入目录'); return; }
+    launch.disabled = true;
+    try {
+      await spawnTerminal({ cwd, title: titleInput.value.trim() || undefined });
+      overlay.remove();
+    } catch (error) {
+      launch.disabled = false;
+      toast(`创建终端失败：${error}`);
+    }
+  };
+
+  box.append(
+    el('div', { class: 'terminal-launch-head' }, el('strong', {}, '新终端'), el('span', { class: 'proj' }, '选择项目后自动命名')),
+    el('label', { class: 'terminal-launch-field' }, '项目目录', project),
+    pathInput,
+    el('label', { class: 'terminal-launch-field' }, '终端标题', titleInput),
+    el('div', { class: 'terminal-root-settings' }, el('span', { class: 'proj' }, '常用目录'), rootsList, el('div', { class: 'terminal-root-add' }, rootInput, addRoot)),
+    el('div', { class: 'terminal-launch-actions' }, cancel, launch),
+  );
+  overlay.append(box);
+  overlay.onclick = (event) => { if (event.target === overlay) overlay.remove(); };
+  document.body.append(overlay);
+  syncPathMode();
+  project.focus();
 }
 async function cloneTerminal(id: string): Promise<void> {
   const meta = await api<TerminalMeta>(`/api/terminals/${encodeURIComponent(id)}/clone`, { method: 'POST' });

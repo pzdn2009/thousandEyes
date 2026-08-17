@@ -185,6 +185,30 @@ main { padding: 0 0 60px; }
 .terminal-host { position: relative; flex: 1; min-height: 0; padding: 3px; }
 .terminal-host .xterm { height: 100%; }
 .terminal-exit { position: absolute; z-index: 2; right: 10px; top: 8px; color: var(--fg-dim); font-size: 11px; }
+
+/* ---------- 项目化新终端 ---------- */
+.terminal-launch-overlay {
+  position: fixed; inset: 0; z-index: 100;
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 12vh; background: color-mix(in srgb, #000 45%, transparent);
+}
+.terminal-launch {
+  width: min(560px, 92vw); padding: 18px;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 20px 60px rgba(0,0,0,.45);
+}
+.terminal-launch-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.terminal-launch-field { display: grid; gap: 5px; margin-top: 11px; color: var(--fg-dim); font-size: 12px; }
+.terminal-launch select, .terminal-launch input { width: 100%; background: var(--bg); border: 1px solid var(--border); color: var(--fg); border-radius: 6px; padding: 7px 9px; font: inherit; outline: none; }
+.terminal-launch select:focus, .terminal-launch input:focus { border-color: var(--accent); }
+.terminal-launch-path { margin-top: 8px; }
+.terminal-root-settings { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border); }
+.terminal-root-list { display: grid; gap: 5px; margin-top: 7px; }
+.terminal-root-item { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 24px; color: var(--fg-dim); font-family: var(--mono); font-size: 11px; }
+.terminal-root-add { display: flex; gap: 7px; margin-top: 9px; }
+.terminal-root-add input { min-width: 0; }
+.terminal-launch-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.terminal-launch-submit { border-color: var(--accent); color: var(--accent); }
 @media (max-width: 700px) { .terminal-grid { grid-template-columns: 1fr; padding: 6px; } .terminal-card { height: 58vh; } }
 
 /* ---------- 时间轴 ---------- */
